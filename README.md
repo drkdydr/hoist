@@ -1,2 +1,7 @@
-# hoist
-c flag library for adding arguments to your programs (inspired by python's argparser)
+# Hoist
+
+C library for adding flags and arguments to your programs.
+
+*Inspired by Python's* ***argparser*** *library*
+
+***HOIST the colours high!!!***
