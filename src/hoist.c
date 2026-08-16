@@ -1,114 +1,160 @@
 #include "hoist.h"
+#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 
-static Flag** flags;
-static int flag_count;
+// TODO : command argument ayrımını iyi yap
+// program adını çağırıldığı binary adından çıkarabilirsin (consider this)
+// program arguman'ı variable'a atayamıyor.
+// memory leak'i önlemek için pointer olan argümanları kullanmadan önce delete edebilirsin 
 
-static Command** commands;
-static int command_count;
+static Option** args;
+static int arg_count;
+static int arg_capacity;
 
 static const char *programName;
 static const char *description;
 
-void print_help(){
+bool needHelp;
+
+// debug:
+void paramCount(){
+      printf("argument count: %d\n",arg_count);
+      printf("argument capacity: %d\n",arg_capacity);
+}
+
+static void print_help(){
       printf("usage: %s", programName);
       // if there are other flags different than help
-      if (flag_count > 1) printf(" [OPTIONS]");
-      // if there are any commands
-      if (command_count > 0) printf(" [COMMANDS]");
+      if (arg_count > 1) printf(" [OPTIONS]");
       printf("\n");
       printf("%s\n", description);
 
-      if (command_count > 1) printf("\ncommands:\n");
-      for (int i = 0; i < command_count; i++){
-            Command *curr = commands[i];
-            printf("  %s:\t%s\n", curr->command, curr->description);//  auth:          Authenticate gh and git with GitHub
-      }
-
-      if (flag_count > 0) printf("\noptions:\n");
-      for (int i = 0; i < flag_count; i++){
-            Flag *curr = flags[i];
-            printf("  %s, %s %s\t%s\n", curr->shortFlag, curr->flag, curr->paramName, curr->description);
+      if (arg_count > 0) printf("\noptions:\n");
+      for (int i = 0; i < arg_count; i++){
+            Option *curr = args[i];
+            if (curr->opt && curr->shortOpt)
+                  printf("  %s, %s %s\t%s\n", curr->shortOpt, curr->opt, curr->paramName ? curr->paramName : "", curr->description);
+            else // one or less option str exists
+                  printf("  %s %s\t%s\n", curr->shortOpt ? curr->shortOpt : (curr->opt ? curr->opt : ""), curr->paramName ? curr->paramName : "", curr->description);
       }
 }
 
 void hoist(const char *_programName, const char *_description){
       // initalize library
-      flag_count = 0;
+      arg_count = 0;
+      arg_capacity = 0;
+
       programName = _programName;
       description = _description;
 
       // include help flag
-      void (*helpPtr) ();
-      helpPtr = &print_help;
-      new_flag("-h", "--help", "prints this help message", helpPtr, FUNCTION, NULL);
+      needHelp = false;
+      new_opt("-h", "--help", "prints this help message", &needHelp);
 }
 
-void init_flag(Flag *fptr, const char *_shortArg, const char *_arg, const char *_description, void *_ptr, PTR_TYPE _ptr_type, const char *_par_name){
+void init_opt(Option *fptr, const char *_shortArg, const char *_arg, const char *_description, void *_ptr, const char *_par_name){
       if (!fptr) return;
 
-      fptr->shortFlag = _shortArg;
-      fptr->flag = _arg;
+      fptr->shortOpt = _shortArg;
+      fptr->opt = _arg;
       fptr->description = _description;
       fptr->paramPtr = _ptr;
-      fptr->paramType = _ptr_type;
       fptr->paramName = _par_name;
 }
 
-void new_flag(const char *shortFlag, const char *flag, const char *description, void *paramPtr, PTR_TYPE paramTYPE, const char *paramName){
+void new_opt(const char *shortFlag, const char *flag, const char *description, bool *ptr){
       // allocate memory
-      if (flag_count == 0){
-            flags = (Flag**)malloc((flag_count + 1) * sizeof(Flag*));
-      }else {
-            flags = (Flag**)realloc(flags, (flag_count + 1) * sizeof(Flag*));
-      }
+      if (arg_count == arg_capacity){
+            if (arg_count == 0){
+                  args = (Option**)malloc(sizeof(Option*)); // room for one
+                  arg_capacity = 1;
+            }else {
+                  args = (Option**)realloc(args, (arg_capacity * 2) * sizeof(Option*));
+                  arg_capacity *= 2;
+            }
 
-      if (flags == NULL){
-            printf("Allocation failed.\n");
-            exit(1);
+            if (!args){
+                  printf("Allocation failed.\n");
+                  exit(1);
+            }
       }
       
       // create & add new flag
-      Flag *f = (Flag*)malloc(sizeof(Flag));
-      init_flag(f, shortFlag, flag, description, paramPtr, paramTYPE, paramName);
-      flags[flag_count++] = f;
+      Option *f = (Option*)malloc(sizeof(Option));
+      init_opt(f, shortFlag, flag, description, ptr, NULL);
+      args[arg_count++] = f;
 }
 
-void init_command(Command* cptr, const char *_command_str, const char * _description, bool* _res_ptr){
-      if (!cptr) return;
+void new_opt_arged(const char *shortFlag, const char *flag, const char *description, char *paramPtr, const char* par_name){
+      // allocate memory
+      if (arg_count == arg_capacity){
+            if (arg_count == 0){
+                  args = (Option**)malloc(sizeof(Option*)); // room for one
+                  arg_capacity = 1;
+            }else {
+                  args = (Option**)realloc(args, (arg_capacity * 2) * sizeof(Option*));
+                  arg_capacity *= 2;
+            }
 
-      cptr->command = _command_str;
-      cptr->description = _description;
-      cptr->result = _res_ptr;
-}
-
-void new_command(const char *command_str, const char* description, bool *res_ptr){
-      if (command_count == 0){
-            commands = (Command**)malloc((command_count + 1) * sizeof(Command*));
-      }else{
-            commands = (Command**)realloc(commands, (command_count + 1) * sizeof(Command*));
+            if (!args){
+                  printf("Allocation failed.\n");
+                  exit(1);
+            }
       }
+      
+      // create & add new flag
+      Option *f = (Option*)malloc(sizeof(Option));
+      init_opt(f, shortFlag, flag, description, (void*)paramPtr, par_name);
+      args[arg_count++] = f;
 
-      if (commands == NULL){
-            printf("Allocation failed.\n");
-            exit(1);
-      }
-
-      Command *c = (Command*)malloc(sizeof(Command));
-      init_command(c, command_str, description, res_ptr);
-      commands[command_count++] = c;
 }
 
 void parse_args(int argc, char **argv){
-      for (int i = 0; i < argc; i++){
+      for (int i = 1; i < argc; i++){ // first argument is program name
+            bool hasMatch = false;
+            char *curr_arg = argv[i];
 
+            // first try flags
+            for (int j = 0; j < arg_count; j++){
+                  Option* curr_opt_ptr = args[j];
+                  // check match
+                  if (strcmp(curr_arg, curr_opt_ptr->shortOpt ? curr_opt_ptr->shortOpt : "") == 0 ||
+                              strcmp(curr_arg, curr_opt_ptr->opt ? curr_opt_ptr->opt : "") == 0) {
+                        // has argument?
+                        if (curr_opt_ptr->paramPtr){
+                              if (curr_opt_ptr->paramName){ // if paramname given result is hold by char*
+                                    // DIKKAT : bu büyük ihtimalle işe yaramayacak!!
+                                    printf("paramname exists: %s\n",curr_opt_ptr->paramName);
+                                    if (argc > (i + 1)){
+                                          curr_opt_ptr->paramPtr = argv[i+1];
+                                          i++; // skip argument in next iteration
+                                    }else{ // missing argument
+                                          printf("%s: '%s' missing argument\n", programName, argv[i]);
+                                    }
+                              }else{ // if paramname not given existance of flag is hold by bool*
+                                    *(bool*)(curr_opt_ptr->paramPtr) = true;
+                              }
+                        }
+                        hasMatch = true;
+                        break;
+                  }
+            }
+            if (hasMatch) break;
+
+            // print error if no matching flag/command
+            printf("%s: invalid option -- '%s'\n", programName, curr_arg);
+            printf("Try '%s --help' for more information.\n", programName);
+            exit(1);
       }
+
+      // run built-in functions
+      if (needHelp) print_help();
 
       // free all
-      for (int i = 0; i < flag_count; i++){
-            free(flags[i]);
+      for (int i = 0; i < arg_count; i++){
+            free(args[i]);
       }
-      free(flags);
+      free(args);
 }
